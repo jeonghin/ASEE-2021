@@ -1,0 +1,83 @@
+---
+title: "ASEE Conference Code 2021"
+author: "Jeong-Hin Chin, Herbert Li, and Dr. Robin Fowler"
+date: "7/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(2020)
+library(tidyverse)
+library(boot)
+library(MASS)
+library("FactoMineR")
+library("factoextra")
+library(cluster)
+library(ggpubr)
+library(VIM)
+library(DescTools)
+library(caret)
+```
+
+# Simulation
+
+To simulate how the cluster analysis would work, we can generate random integer values in the range [1,7] to represent students’ responses in BoT. We will create simulated data of size 500 to imitate the data collected from BoT. This simulation section provides an explanation on how the codes are implemented, which is useful for future research reproduction.
+
+```{r}
+rep <- function(){sample(1:7, 500,replace = TRUE)}
+Data_Simul <- data.frame(Control =  rep(), 
+                         SpeakUp = rep(),
+                         Procrastination = rep(),
+                         BT_Belongingness = rep(),
+                         Extraversion = rep())
+ 
+```
+
+## Clustering and Dendogram
+
+Since we are unable to predict how the students will answer the survey, we will use the sample() function provided by R to mimic the randomness in students’ responses. sample() will help us pick the values in the range from 1 to 7 (inclusively) with replacement. Then, in order to look at the clustering of data, a dendrogram is drawn and the cluster analysis plot is generated. The Euclidean distance is used in the cluster analysis.
+
+```{r,cache = TRUE}
+dcan <- dist(Data_Simul, method = "euclidean") 
+hcan <- hclust(dcan)
+par(mar = c(0,0,0,0))
+plot(hcan, axes = FALSE, ann = FALSE, main = NA, labels = FALSE, hang = 0.01)
+```
+
+## K-Means
+
+We determine the number of optimal clusters that we want from the dendogram or through algorithm (Elbow,Silhouette and Gap Statistics). In this simulation, we determine the number of clusters through dendogram since it's easier that way.
+
+```{r}
+Data_Simul_Kmeans <- Data_Simul
+
+k3 <- kmeans(Data_Simul_Kmeans, centers = 3, nstart = 25)
+fviz_cluster(k3, data = Data_Simul_Kmeans,geom = "point")
+Data_Simul_Kmeans_Result <- Data_Simul_Kmeans %>%
+                    mutate(Cluster = k3$cluster) %>%
+                    group_by(Cluster) %>%
+                    summarise_all("mean")
+```
+
+## Bootstrap
+
+Sometimes, researchers are unable to get a large sample of data. After clustering, some clusters may not contain a large data set and it is difficult to reach a conclusion on whether there is a difference between the clusters. Thus, bootstrap analysis is useful in this case. 
+
+```{r}
+Data_Simul_Kmeans <- Data_Simul_Kmeans %>% mutate(Cluster = k3$cluster)
+control <- Data_Simul_Kmeans %>% filter(Cluster != 1)
+
+# Setting up the functions and constants
+B <- 10000
+
+Control_mean_diff <- function(x, index) {     
+  xstar <- x[index, ] # boot will handle stratification for us    
+  mean(xstar$Control[xstar$Cluster == 2 ], na.rm = TRUE) -        
+    mean(xstar$Control[xstar$Cluster == 3 ], na.rm = TRUE)}
+
+boot_control_2_3 <- boot(control, statistic = Control_mean_diff, R = B)
+boot_control_2_3$t0
+(bc23CI<- boot.ci(boot_control_2_3, type = "norm"))
+```
+
